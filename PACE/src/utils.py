@@ -7,7 +7,7 @@ from scipy.special import gammaln, psi
 import torch
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-from datasets import load_metric
+from evaluate import load
 from config import parser
 from transformers import ViTFeatureExtractor
 from torchvision.transforms import (CenterCrop, 
@@ -73,7 +73,7 @@ def compute_metrics(pred):
     #labels = pred.label_ids
     labels, preds = pred.predictions
     #metric = load_metric('glue', args.task)
-    metric =load_metric('accuracy')
+    metric =load('accuracy')
     return metric.compute(predictions=preds, references=labels)
 
 def dirichlet_expectation(alpha):

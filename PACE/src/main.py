@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from datasets import load_metric,load_dataset
+# from datasets import load_metric,load_dataset
 import pickle
 import os
 from math import pi
@@ -32,13 +32,13 @@ import torchvision.transforms as transforms
 import torchvision
 from utils import accuracy_score, dirichlet_expectation, read_tsv_file, compute_metrics, Adam, posterior_mu_sigma
 from model import PACE, ViTClassify
-from torchviz import make_dot
+# from torchviz import make_dot
 from utils import dirichlet_expectation
 from torchvision.transforms.functional import InterpolationMode
 from augment import image_augment
 from transformers import TrainingArguments, Trainer, AutoFeatureExtractor
 from utils import MyImageDataset
-from datasets import load_dataset
+# from datasets import load_dataset
 import os
 from PIL import Image
 import torch
@@ -98,7 +98,7 @@ class MyEarlyStoppingCallback(EarlyStoppingCallback):
 
 class PACETrainer(Trainer):
 
-    def compute_loss(self,model,inputs,return_outputs=False): # **args...
+    def compute_loss(self,model,inputs,return_outputs=False,num_items_in_batch=None): # **args...
         #output = model(inputs['encodings'])  # get predict outputs and last word embeddings
         logits, states, att = model(inputs['encodings']) 
         image_trans = image_augment(inputs['encodings'])
@@ -229,7 +229,7 @@ training_args = TrainingArguments(
     seed = args.seed,
     load_best_model_at_end=True,
     metric_for_best_model=args.metric, # 'eval_matthews_correlation' for cola, etc.
-    evaluation_strategy='epoch',
+    eval_strategy='epoch',
     save_strategy='epoch',
     learning_rate = args.lr,
 )

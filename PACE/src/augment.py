@@ -7,7 +7,7 @@ from scipy.special import gammaln, psi
 import torch
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
-from datasets import load_metric
+from evaluate import load 
 from transformers import ViTFeatureExtractor
 from torchvision.transforms import (CenterCrop, 
                                     Compose, 
