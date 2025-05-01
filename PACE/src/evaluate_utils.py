@@ -1,21 +1,20 @@
 # import metric packages
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from numpy.linalg import *
+import torch
+# from datasets import load_metric
+# from numpy.linalg import *
 from scipy.linalg import sqrtm
 from scipy.special import gammaln, psi
-import torch
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-from datasets import load_metric
-from sklearn.linear_model import LogisticRegression, LinearRegression
-from utils import *
-from sklearn.pipeline import make_pipeline
-from sklearn import preprocessing
 from scipy.stats import entropy
+from sklearn import preprocessing
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import Normalizer
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import Normalizer, StandardScaler
+from utils import *
 
 
 def to_numpy(x):

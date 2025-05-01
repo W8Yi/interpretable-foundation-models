@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from datasets import load_metric,load_dataset
+from datasets import load_dataset
 import pickle
 import os
 from math import pi
@@ -29,26 +29,25 @@ from scipy.special import gammaln, psi
 from numpy.linalg import *
 import math
 import pandas as pd
-from config_parse_args import parser
+from config import parser
 import torchvision.transforms as transforms
 import torchvision
 from utils import accuracy_score, dirichlet_expectation, read_tsv_file, compute_metrics, Adam, posterior_mu, posterior_mu_sigma, vis, kmeans_init
 from utils import  run_kmeans, ImageNetDataset, Cub2011, plot_topics
-from model import CLDA, ViTClassify
-from torchviz import make_dot
+from model import PACE, ViTClassify
+# from torchviz import make_dot
 from utils import load_train_data, load_val_data, softmax, dirichlet_expectation
 from torchvision.transforms.functional import InterpolationMode
-from augment import relevance, faithfulness
-from captum.attr import Lime, LimeBase
-from augment import contrastive_learning, contrative_transform, image_augment
-import wandb
+# from captum.attr import Lime, LimeBase
+from augment import relevance, faithfulness, contrastive_learning, contrative_transform, image_augment
+# import wandb
 from transformers import TrainingArguments, Trainer, AutoFeatureExtractor
 from utils import MyImageDataset
 from datasets import load_dataset
-from evaluate import stability, faithfulness, get_topics, coherence, diversity
+from evaluate_utils import stability, faithfulness, get_topics, coherence, diversity
 import shap, lime
 from utils import StanfordCars, MyImageDatasetFromStanfordCars, build_transform
-s
+
 args = parser.parse_args() 
 args.save_path = os.path.join(args.save_path, args.name)
 sample_path = os.path.join('../sample', args.name)
@@ -88,10 +87,10 @@ model = model.cuda()
 #make_dot(y, params=dict(list(model.named_parameters()))).render("vit_torchviz", format="png")
 
 
-if 'clda' in args.name:
-    clda = CLDA(d=args.c_dim,K=args.K,D=args.D,N=args.N,alpha=args.alpha,C = args.out_dim)
+if 'PACE' in args.name:
+    PACE = PACE(d=args.c_dim,K=args.K,D=args.D,N=args.N,alpha=args.alpha,C = args.out_dim)
 else:
-    clda = None
+    PACE = None
 
 training_args = TrainingArguments(
     output_dir='./results',          # output directory
@@ -105,10 +104,10 @@ training_args = TrainingArguments(
     seed = args.seed,
     load_best_model_at_end=True,
     metric_for_best_model=args.metric, # 'eval_matthews_correlation' for cola, etc.
-    evaluation_strategy='epoch',
+    eval_strategy='epoch',
     save_strategy='epoch',
     learning_rate = args.lr,
-    report_to="wandb",
+    # report_to="wandb",
     #resume_from_checkpoint=True,
    # eval_steps=100,
 )
@@ -121,7 +120,7 @@ print('train size', len(train_dataset))
 print('eval size', len(val_dataset))
 
 #X0 = np.load(os.path.join(args.save_path, 'X-L-2.npy'))
-#clda._mus = clda._mu0 = run_kmeans(X0, args.K)
+#PACE._mus = PACE._mu0 = run_kmeans(X0, args.K)
 
 print('evaluating')
     #model.load_state_dict(torch.load('../ckpt/bert-base' +'/' + args.task + '_' +'epoch10'+'_lr-3e-5.pt'))
@@ -131,10 +130,10 @@ model.load_state_dict(torch.load(args.save_path +'/' + args.task + '_' +'epoch'+
 #torch.save(model.linear.state_dict(), args.save_path +'/' + args.task + '_' +'linear-epoch'+str(args.num_epoches)+'.pt')
 #torch.save(model.classify.state_dict(), args.save_path+'/'+ args.task + '_' +'classify-epoch'+str(args.num_epoches)+'.pt')
 
-if clda is not None:
-    clda._mus = np.load(args.save_path+'/' + args.task + '_'+'mus-epoch'+str(args.num_epoches)+ '_L'+ str(args.layer)+'-MLP.npy')
-    clda._sigmas = np.load(args.save_path+'/' + args.task + '_' +'sigmas-epoch'+str(args.num_epoches)+ '_L'+ str(args.layer)+'-MLP.npy')
-    clda._eta = np.load(args.save_path+'/' + args.task + '_'+'eta-epoch'+str(args.num_epoches)+ '_L'+ str(args.layer)+'-MLP.npy')
+if PACE is not None:
+    PACE._mus = np.load(args.save_path+'/' + args.task + '_'+'mus-epoch'+str(args.num_epoches)+ '_L'+ str(args.layer)+'-MLP.npy')
+    PACE._sigmas = np.load(args.save_path+'/' + args.task + '_' +'sigmas-epoch'+str(args.num_epoches)+ '_L'+ str(args.layer)+'-MLP.npy')
+    PACE._eta = np.load(args.save_path+'/' + args.task + '_'+'eta-epoch'+str(args.num_epoches)+ '_L'+ str(args.layer)+'-MLP.npy')
 
 
 
@@ -158,15 +157,15 @@ font = []
 topic_cnt = {}
 
 for idx in range(args.K):  # args.K
-        if clda is None:
+        if PACE is None:
             continue
         name.append(0)
         topic.append('T_'+str(idx))
-        #font.append(1) # np.exp(det(clda._sigmas[idx]))
+        #font.append(1) # np.exp(det(PACE._sigmas[idx]))
         if x is None:
-            x = clda._mus[idx].reshape(-1,args.c_dim)
+            x = PACE._mus[idx].reshape(-1,args.c_dim)
         else:
-            x = np.concatenate([x,clda._mus[idx].reshape(-1,args.c_dim)],axis=0)
+            x = np.concatenate([x,PACE._mus[idx].reshape(-1,args.c_dim)],axis=0)
         patch_img.append(np.ones((224//16,224//16,3))) # patch_img[-1].shape
         full_img.append(np.ones((224,224,3)))  # full_img[-1].shape
         pos.append((-1,-1))
@@ -238,12 +237,12 @@ with torch.no_grad():
         
         for i in preds:
             pred_label.append(i)
-        if clda is None:
+        if PACE is None:
             continue
 
         
-        gamma, phi = clda.do_e_step(states, att[args.layer + 1]) # inference w/o learning, so e step instead of em step.
-        gamma_trans, phi_trans = clda.do_e_step(states_trans, att_trans[args.layer + 1])
+        gamma, phi = PACE.do_e_step(states, att[args.layer + 1]) # inference w/o learning, so e step instead of em step.
+        gamma_trans, phi_trans = PACE.do_e_step(states_trans, att_trans[args.layer + 1])
         
         if True:
             num_samples = 100
@@ -266,8 +265,8 @@ with torch.no_grad():
 
         print('corpus', len(corpus), len(corpus[0]))
         #pred_y = softmax(logits[0])
-        #phi_mean = clda._phi[0].mean(0)
-        #log_p = clda.log_p_y(logits)
+        #phi_mean = PACE._phi[0].mean(0)
+        #log_p = PACE.log_p_y(logits)
         #print('pred_y', pred_y)
         #print('log_p', log_p)
         
@@ -332,7 +331,7 @@ with torch.no_grad():
                 #print('patch',pp)
                 #if tt != topic_se: # or ww not in [class_1, class_2]:
                 #    continue
-                if tt or clda is None:
+                if tt or PACE is None:
                     pos.append(((idx+1)//16,(idx+1)%16))
                     #topic.append(tt)
                     name.append(ww)
@@ -368,7 +367,7 @@ print('stability', sscore)
 '''
 test_id = [idx for idx in range(len(pred_label))] 
 
-topics, select_patches, select_attentions = get_topics(embeds, clda._mus, patches, attentions)
+topics, select_patches, select_attentions = get_topics(embeds, PACE._mus, patches, attentions)
 
 '''
 # remove patches with attention weights lower than 0.0015
@@ -421,13 +420,13 @@ x = x[:sample_num,:].cpu()
 
 for idx in range(len(name)):
     # tt is index where topic is nearest to x[idx]
-    tt = np.argmin([np.linalg.norm(clda._mus[i]-x[idx].detach().cpu().numpy()) for i in range(args.K)])
+    tt = np.argmin([np.linalg.norm(PACE._mus[i]-x[idx].detach().cpu().numpy()) for i in range(args.K)])
     topic.append(tt)
 
-if clda is not None:
+if PACE is not None:
 
-    sigmas = [det(clda._sigmas[i]) for i in range(args.K)]
-    mus = [clda._mus[i].mean() for i in range(args.K)]
+    sigmas = [det(PACE._sigmas[i]) for i in range(args.K)]
+    mus = [PACE._mus[i].mean() for i in range(args.K)]
     print('sigmas', sigmas)
     print('mus', mus)
     vis(x,name,topic,patch_img, pos, full_img, sigmas, div=div, coh=coh, top_topics=top_topics, indiv_coh=indiv_coh)
@@ -436,7 +435,7 @@ if clda is not None:
         word_embed[word] = word_embed[word].cpu().detach().numpy()
         
     for idx in list(topic_cnt):
-        top_words[idx] = sorted(word_embed.items(), key=lambda item: np.linalg.norm(clda._mus[idx]-item[1]))
+        top_words[idx] = sorted(word_embed.items(), key=lambda item: np.linalg.norm(PACE._mus[idx]-item[1]))
         print(idx,[x[0] for x in list(top_words[idx])[:15]])
 # write predictions into tsv file, for submitting
 print('pred', pred_label[:10])
@@ -447,8 +446,8 @@ elif args.task == 'stsb':
 print('pred', pred_label[:10])
 
 
-# sort concepts by distance to clda mus
-concepts = {k: sorted(v, key=lambda item: np.linalg.norm(clda._mus[k]-item)) for k,v in enumerate(concepts)}
+# sort concepts by distance to PACE mus
+concepts = {k: sorted(v, key=lambda item: np.linalg.norm(PACE._mus[k]-item)) for k,v in enumerate(concepts)}
 # save top 10 patches as images for each topic, in a dir named concepts
 
 '''

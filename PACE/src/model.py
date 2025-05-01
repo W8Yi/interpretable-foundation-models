@@ -1,74 +1,69 @@
-from transformers import pipeline
-from transformers import ViTConfig, ViTForImageClassification
-from transformers import ViTForImageClassification, ViTConfig
-import torch
-from torch import nn
-from torch.autograd import Variable
-from torch.utils.data import DataLoader
-import pickle
+import math
 import os
-from math import pi
-import numpy as np
-from sklearn.mixture import GaussianMixture
 import pickle
-from numpy import random
-import scipy.sparse as sp 
-from scipy.special import gammaln
-from tqdm import tqdm
-from sklearn.decomposition import PCA
-from sklearn import manifold
+import re
+import string
+import sys
+import time
+from math import pi
+
 import matplotlib.pyplot as plt
 import numpy as np
-import pickle
-import sys, re, time, string
-from scipy.special import gammaln, psi
-from numpy.linalg import *
-import math
 import pandas as pd
-from config import parser
-#from config_parse_args import parser_args
-from utils import accuracy_score, dirichlet_expectation, read_tsv_file, compute_metrics, Adam, posterior_mu_sigma
-import time
-from torch.nn import functional as F
-from scipy.special import softmax
+import scipy.sparse as sp
+import torch
 from augment import contrastive_learning, contrative_transform
-from utils import Adam
+from config import parser
+from numpy import random
+from numpy.linalg import det, inv
+from scipy.special import gammaln, psi, softmax
+from sklearn import manifold
+from sklearn.decomposition import PCA
+from sklearn.mixture import GaussianMixture
+from torch import nn
+from torch.autograd import Variable
+from torch.nn import functional as F
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers.models.vit import ViTConfig, ViTForImageClassification
+
+from utils import (Adam, accuracy_score, compute_metrics,
+                   dirichlet_expectation, posterior_mu_sigma, read_tsv_file)
 
 args = parser.parse_args() 
 args.save_path = os.path.join(args.save_path, args.name)
 
 
 
-class ViTClassify(nn.Module):
-    def __init__(self, in_dim, out_dim, hid_dim, layer):
-        super(ViTClassify, self).__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.hid_dim = hid_dim
+class ViTImageClassifier(nn.Module):
+    """
+    A wrapper for ViT model with a linear head.
+    Args:
+        in_dim (int): Input dimension.
+        out_dim (int): Output dimension.
+        hid_dim (int): Hidden dimension.
+        layer (int): Layer to extract features from.
+        pretrained_name (str): Pretrained model name.
+    """
+    def __init__(self, in_dim, out_dim, hid_dim, layer, pretrained_name="google/vit-base-patch16-224-in21k"):
+        super().__init__()
         self.layer = layer
+        config = ViTConfig.from_pretrained(pretrained_name, 
+                                           output_hidden_states=True,
+                                           output_attentions=True,
+                                           num_labels=out_dim,
+                                           attn_implementation="eager",
+                                           )
+        self.backbone = ViTForImageClassification.from_pretrained(pretrained_name, config=config)
+        self.head = nn.Linear(in_dim, hid_dim)
 
-        
-        ViT_config = ViTConfig.from_pretrained("google/vit-base-patch16-224-in21k", output_hidden_states=True, output_attentions=True, num_labels=out_dim)
-        self.ViT = ViTForImageClassification.from_pretrained('google/vit-base-patch16-224-in21k', config=ViT_config)
-           
-        if not args.require_grad: # vit be none trainable, train PACE instead  
-            for param in self.ViT.parameters():
-                param.requires_grad = False        
-        self.linear = nn.Linear(in_dim, hid_dim)
-        self.embedding = None
-
-    def forward(self, encodings, labels=None):
-        ViT_output = self.ViT(encodings)
-        logits = ViT_output['logits']
-        all_states = ViT_output['hidden_states']
-        attention = ViT_output['attentions']
-        states = all_states[self.layer]  
-        hidden = self.linear(states)
-        self.embedding = all_states[args.layer]
-
-        return logits, hidden, attention
+    def forward(self, encodings: torch.Tensor, labels=None) -> tuple:
+        out = self.backbone(encodings)
+        hs = out.hidden_states[self.layer]
+        feats = self.head(hs)
+        return out.logits, feats, out.attentions
+    
 class PACE:
-
     def __init__(self, d, K, D, N, alpha, C):
         '''
         Arguments:
